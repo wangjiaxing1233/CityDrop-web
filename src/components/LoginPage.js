@@ -1,99 +1,205 @@
-import React from 'react';
-import { Tabs, Form, Input, Button, message } from 'antd';
-import { colors } from '../theme';
-import { login, register } from '../utils';
+import React from "react";
+import { Form, Input, Button, Tabs, message } from "antd";
+import { colors } from "../theme";
+import { login, register } from "../utils";
+import Logo from "./Logo";
 
-// No hooks (no useState) — state lives on `this.state`, matching
-// staybooking/staysbookingfe/src/components/LoginPage.js.
 class LoginPage extends React.Component {
   state = {
-    activeTab: 'login',
-    loginLoading: false,
-    registerLoading: false,
+    activeTab: "login",
+    loading: false,
   };
 
-  handleLogin = async (values) => {
-    this.setState({ loginLoading: true });
+  handleFinish = async (values) => {
+    this.setState({ loading: true });
     try {
-      const result = await login({ email: values.email, password: values.password });
-      // this.props.handleLoginSuccess was passed down from App.js — calling
-      // it is this version's replacement for navigate('/home').
-      this.props.handleLoginSuccess(result.token, result.email);
+      if (this.state.activeTab === "login") {
+        const { username } = await login(values);
+        this.props.handleLoginSuccess(username);
+        message.success("Welcome back!");
+      } else {
+        await register(values);
+        message.success("Registration successful! Please login.");
+        this.setState({ activeTab: "login" });
+      }
     } catch (err) {
       message.error(err.message);
     } finally {
-      this.setState({ loginLoading: false });
-    }
-  };
-
-  handleRegister = async (values) => {
-    this.setState({ registerLoading: true });
-    try {
-      await register({ email: values.email, password: values.password });
-      message.success('Registration successful — you can now log in.');
-      this.setState({ activeTab: 'login' });
-    } catch (err) {
-      message.error(err.message);
-    } finally {
-      this.setState({ registerLoading: false });
+      this.setState({ loading: false });
     }
   };
 
   render() {
-    const items = [
-      {
-        key: 'login',
-        label: 'Login',
-        children: (
-          <Form
-            layout="vertical"
-            onFinish={this.handleLogin}
-            initialValues={{ email: 'demo@citydrop.app', password: '123456' }}
-          >
-            <Form.Item name="email" label="Email" rules={[{ required: true }]}>
-              <Input />
-            </Form.Item>
-            <Form.Item name="password" label="Password" rules={[{ required: true }]}>
-              <Input.Password />
-            </Form.Item>
-            <Button type="primary" htmlType="submit" block loading={this.state.loginLoading}>
-              Login
-            </Button>
-          </Form>
-        ),
-      },
-      {
-        key: 'register',
-        label: 'Register',
-        children: (
-          <Form layout="vertical" onFinish={this.handleRegister}>
-            <Form.Item name="email" label="Email (used as username)" rules={[{ required: true }]}>
-              <Input placeholder="your@email.com" />
-            </Form.Item>
-            <Form.Item name="password" label="Password" rules={[{ required: true }]}>
-              <Input.Password placeholder="Choose a password" />
-            </Form.Item>
-            <Button type="primary" htmlType="submit" block loading={this.state.registerLoading}>
-              Register
-            </Button>
-          </Form>
-        ),
-      },
-    ];
+    const { activeTab, loading } = this.state;
 
     return (
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '100vh' }}>
-        <div style={{ width: 380, padding: 32, border: `1px solid ${colors.border}`, borderRadius: 12, background: '#fff' }}>
-          <div style={{ textAlign: 'center', marginBottom: 18 }}>
-            <div style={{ fontWeight: 'bold', fontSize: 20, color: colors.navy }}>CityDrop</div>
-            <div style={{ fontSize: 12, color: colors.muted }}>Dispatch &amp; Delivery Management</div>
-          </div>
-          <Tabs
-            activeKey={this.state.activeTab}
-            onChange={(key) => this.setState({ activeTab: key })}
-            items={items}
-            centered
+      <div
+        style={{
+          display: "flex",
+          height: "calc(100vh - 54px)",
+          width: "100%",
+          backgroundColor: "#f3f4f7",
+        }}
+      >
+        <div
+          style={{
+            flex: 1,
+            backgroundColor: "#f3f4f7",
+            padding: "24px 0 24px 24px",
+            display: "flex",
+          }}
+        >
+          <div
+            style={{
+              flex: 1,
+              backgroundImage:
+                "linear-gradient(to right, rgba(26, 31, 61, 0.2), rgba(26, 31, 61, 0.05)), url('/RD.png')",
+              backgroundSize: "cover",
+              backgroundPosition: "center 60%",
+              borderRadius: "16px",
+              border: "1px solid #e2e8f0",
+              boxShadow: "0 4px 20px rgba(0, 0, 0, 0.02)",
+            }}
           />
+        </div>
+
+        <div
+          style={{
+            flex: 1,
+            display: "flex",
+            flexDirection: "column",
+            justifyContent: "center",
+            alignItems: "center",
+            backgroundColor: "transparent",
+            padding: "0 40px",
+          }}
+        >
+          <div style={{ width: "100%", maxWidth: "380px" }}>
+            <div style={{ marginBottom: 36, textAlign: "left" }}>
+              <div style={{ marginBottom: 14 }}>
+                <Logo size={38} />
+              </div>
+              <h1
+                style={{
+                  color: colors.navy,
+                  margin: "0 0 4px 0",
+                  fontSize: 30,
+                  fontWeight: 800,
+                  letterSpacing: "-0.8px",
+                }}
+              >
+                CityDrop
+              </h1>
+              <p
+                style={{
+                  color: colors.muted,
+                  margin: 0,
+                  fontSize: 14,
+                  fontWeight: 500,
+                }}
+              >
+                Dispatch & Delivery Management
+              </p>
+            </div>
+
+            <Tabs
+              activeKey={activeTab}
+              onChange={(key) => this.setState({ activeTab: key })}
+              size="large"
+              tabBarStyle={{
+                marginBottom: 36,
+                borderBottom: "1px solid #cbd5e1",
+              }}
+              items={[
+                { label: "Login", key: "login" },
+                { label: "Register", key: "register" },
+              ]}
+            />
+
+            <Form
+              layout="vertical"
+              onFinish={this.handleFinish}
+              requiredMark={true}
+            >
+              <Form.Item
+                name="username"
+                label={
+                  <span
+                    style={{
+                      fontWeight: 600,
+                      color: colors.text,
+                      fontSize: 13,
+                    }}
+                  >
+                    Username
+                  </span>
+                }
+                rules={[
+                  { required: true, message: "Please input your username" },
+                ]}
+              >
+                <Input
+                  placeholder="enter your username"
+                  style={{
+                    height: 42,
+                    borderRadius: 8,
+                    border: "1px solid #cbd5e1",
+                    backgroundColor: "#ffffff",
+                    fontSize: 14,
+                  }}
+                />
+              </Form.Item>
+
+              <Form.Item
+                name="password"
+                label={
+                  <span
+                    style={{
+                      fontWeight: 600,
+                      color: colors.text,
+                      fontSize: 13,
+                    }}
+                  >
+                    Password
+                  </span>
+                }
+                rules={[
+                  { required: true, message: "Please input your password" },
+                ]}
+              >
+                <Input.Password
+                  placeholder="enter your password"
+                  style={{
+                    height: 42,
+                    borderRadius: 8,
+                    border: "1px solid #cbd5e1",
+                    backgroundColor: "#ffffff",
+                    fontSize: 14,
+                  }}
+                />
+              </Form.Item>
+
+              <Form.Item style={{ marginTop: 40, marginBottom: 0 }}>
+                <Button
+                  type="primary"
+                  htmlType="submit"
+                  loading={loading}
+                  style={{
+                    width: "100%",
+                    height: 44,
+                    borderRadius: 8,
+                    fontSize: 15,
+                    fontWeight: 600,
+                    backgroundColor: colors.navy,
+                    border: "none",
+                    boxShadow: "0 4px 12px rgba(26, 31, 61, 0.15)",
+                  }}
+                >
+                  {activeTab === "login" ? "Login" : "Register"}
+                </Button>
+              </Form.Item>
+            </Form>
+          </div>
         </div>
       </div>
     );

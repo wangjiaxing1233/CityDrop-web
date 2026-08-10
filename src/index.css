@@ -1,5 +1,502 @@
 body {
   margin: 0;
   font-family: -apple-system, "Segoe UI", Arial, sans-serif;
-  background: #F3F4F7;
+  background: #f3f4f7;
+}
+
+.ant-btn,
+.ant-input,
+.ant-card,
+.ant-select-selector {
+  border-radius: 14px !important;
+}
+
+.ant-btn-primary {
+  height: 40px !important;
+  padding: 0 20px !important;
+  font-weight: 500 !important;
+  box-shadow: 0 4px 12px rgba(30, 39, 97, 0.15) !important;
+  transition: all 0.2s ease !important;
+}
+
+.ant-btn-primary:hover {
+  transform: translateY(-1px) !important;
+  box-shadow: 0 6px 16px rgba(30, 39, 97, 0.25) !important;
+}
+
+.icon-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 12px;
+  background: #eaf0fc;
+  flex-shrink: 0;
+}
+
+.icon-badge.gold {
+  background: #fcefd9;
+}
+
+.delivery-option-card {
+  transition:
+    transform 0.2s ease,
+    box-shadow 0.2s ease;
+}
+
+.delivery-option-card:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 10px 24px rgba(30, 39, 97, 0.08);
+}
+
+.ant-input:focus,
+.ant-input-focused,
+.ant-input-number-focused,
+.ant-picker-focused {
+  box-shadow: 0 0 0 3px rgba(30, 39, 97, 0.12) !important;
+  border-color: #1e2761 !important;
+}
+
+.top-nav-links {
+  display: flex;
+  align-items: center;
+  gap: 28px;
+}
+
+.top-nav-link {
+  color: rgba(255, 255, 255, 0.82);
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  text-decoration: none;
+  transition: color 0.15s ease;
+}
+
+.top-nav-link:hover {
+  color: #ffffff;
+}
+
+.top-nav-link.static {
+  cursor: default;
+}
+
+.top-nav-link.static:hover {
+  color: rgba(255, 255, 255, 0.82);
+}
+
+@media (max-width: 960px) {
+  .top-nav-links {
+    display: none;
+  }
+}
+
+.homepage-hero {
+  position: relative;
+  width: 100%;
+  height: 82vh;
+  min-height: 460px;
+  overflow: hidden;
+  background: #1e2761;
+  flex-shrink: 0;
+}
+
+.hero-carousel-wrap {
+  position: absolute;
+  inset: 0;
+}
+
+/* antd's <Carousel> renders its own .ant-carousel wrapper around the
+   slick-slider (the element our own "hero-carousel" className actually
+   lands on) — that wrapper has no explicit height of its own (block,
+   content-sized), so a child's "height: 100%" resolves against an "auto"
+   ancestor and CSS treats that as auto too (spec: percentage height against
+   a content-sized ancestor is ignored). Absolute-positioning .ant-carousel
+   over its (relatively-positioned) wrapper gives it a definite box without
+   touching `display` — earlier we tried forcing `display: flex` on it
+   instead, which desynced react-slick's own JS width measurement and
+   produced a corrupted, effectively-infinite slide width. inset: 0 avoids
+   that entirely. */
+.hero-carousel-wrap .ant-carousel {
+  position: absolute;
+  inset: 0;
+}
+
+.hero-carousel-wrap .slick-slider,
+.hero-carousel-wrap .slick-list,
+.hero-carousel-wrap .slick-track,
+.hero-carousel-wrap .slick-slide,
+.hero-carousel-wrap .slick-slide > div,
+.hero-carousel-wrap .slick-slide > div > div {
+  height: 100% !important;
+}
+
+.hero-slide {
+  position: relative;
+  height: 100%;
+  background: #1e2761;
+}
+
+.hero-slide-media {
+  position: absolute;
+  inset: 0;
+}
+
+.hero-slide-media img,
+.hero-slide-media svg {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.hero-slide-overlay {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    180deg,
+    rgba(15, 20, 54, 0.6) 0%,
+    rgba(15, 20, 54, 0) 22%,
+    rgba(15, 20, 54, 0) 55%,
+    rgba(15, 20, 54, 0.55) 80%,
+    rgba(15, 20, 54, 0.85) 100%
+  );
+}
+
+.hero-slide-topbar {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 38%;
+  transform: translateY(-50%);
+  padding: 0 56px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  animation: heroTextIn 0.7s ease forwards;
+  animation-delay: 0.1s;
+}
+
+.hero-welcome {
+  color: #ffffff;
+  font-weight: 800;
+  font-size: 46px;
+  letter-spacing: -1px;
+  text-shadow: 0 4px 18px rgba(0, 0, 0, 0.4);
+}
+
+.hero-welcome-sub {
+  color: rgba(255, 255, 255, 0.85);
+  font-size: 19px;
+  margin-top: 10px;
+  text-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
+}
+
+.hero-slide-text {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 140px;
+  padding: 0 56px;
+  /* Plays once when each slide's text first mounts. Slides swap in and out
+     via the carousel's own slide transition, which is why this doesn't
+     need to be re-triggered per active slide — antd's afterChange index
+     doesn't reliably match the visually-active slide (an infinite-loop
+     clone-indexing quirk), so keying an animation off "is this the active
+     slide" was flaky. A plain mount-time animation sidesteps that. */
+  animation: heroTextIn 0.7s ease forwards;
+  animation-delay: 0.15s;
+}
+
+@keyframes heroTextIn {
+  from {
+    opacity: 0;
+    transform: translateY(16px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.hero-slide-eyebrow {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  color: #e8a33d;
+  margin-bottom: 10px;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+}
+
+.hero-slide-text h1 {
+  color: #ffffff;
+  font-size: 34px;
+  font-weight: 800;
+  margin: 0 0 10px 0;
+  letter-spacing: -0.5px;
+  text-shadow: 0 2px 10px rgba(0, 0, 0, 0.35);
+}
+
+.hero-slide-text p {
+  color: rgba(255, 255, 255, 0.88);
+  font-size: 15px;
+  line-height: 1.5;
+  margin: 0;
+  max-width: 480px;
+  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
+}
+
+.hero-carousel .slick-dots {
+  bottom: 104px;
+  left: 0;
+  right: 0;
+  width: auto;
+  margin: 0;
+  text-align: center;
+  justify-content: center;
+}
+
+.hero-carousel .slick-dots li button {
+  background: rgba(255, 255, 255, 0.4);
+}
+
+.hero-carousel .slick-dots li.slick-active button {
+  background: #ffffff;
+}
+
+.homepage-tiles-overlay {
+  position: absolute;
+  left: 20px;
+  right: 20px;
+  bottom: 20px;
+  z-index: 10;
+  display: flex;
+  gap: 14px;
+}
+
+.homepage-tile {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  background: rgba(255, 255, 255, 0.96);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  border-radius: 12px;
+  padding: 14px 18px;
+  cursor: pointer;
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.2);
+  transition:
+    transform 0.2s ease,
+    box-shadow 0.2s ease;
+}
+
+.homepage-tile:hover {
+  background: #eaf0fc;
+  transform: translateY(-3px);
+  box-shadow: 0 14px 32px rgba(30, 39, 97, 0.22);
+}
+
+.homepage-floating-actions {
+  position: absolute;
+  top: 20px;
+  right: 20px;
+  z-index: 10;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.homepage-floating-btn {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.96);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #1e2761;
+  cursor: pointer;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.22);
+  transition:
+    transform 0.2s ease,
+    box-shadow 0.2s ease;
+}
+
+.homepage-floating-btn:hover {
+  transform: translateY(-2px) scale(1.06);
+  box-shadow: 0 10px 26px rgba(0, 0, 0, 0.28);
+}
+
+.homepage-footer {
+  width: 100%;
+  min-height: 220px;
+  background: #fafafa;
+  border-top: 1px solid #ececec;
+  padding: 40px 24px 20px;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+.homepage-footer-columns {
+  width: 100%;
+  max-width: 1080px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 64px;
+}
+
+.homepage-footer-group {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.homepage-footer-group.wide {
+  flex: 1 1 320px;
+}
+
+.homepage-footer-subcols {
+  display: flex;
+  gap: 40px;
+}
+
+.homepage-footer-col {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-width: 160px;
+}
+
+.homepage-footer-heading {
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  color: #1e2761;
+}
+
+.homepage-footer-col span {
+  font-size: 14px;
+  color: #4b5563;
+  cursor: pointer;
+  transition: color 0.15s ease;
+}
+
+.homepage-footer-col span:hover {
+  color: #1e2761;
+}
+
+.homepage-footer-col span.with-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.homepage-footer-social {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 2px;
+}
+
+.homepage-footer-social a {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  border: 1.4px solid #6b7280;
+  background: transparent;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #4b5563;
+  cursor: pointer;
+  transition:
+    background 0.15s ease,
+    color 0.15s ease,
+    border-color 0.15s ease;
+}
+
+.homepage-footer-social a svg {
+  width: 17px;
+  height: 17px;
+}
+
+.homepage-footer-social a:hover {
+  background: #1e2761;
+  border-color: #1e2761;
+  color: #ffffff;
+}
+
+.homepage-footer-bottom {
+  width: 100%;
+  max-width: 1080px;
+  border-top: 1px solid #ececec;
+  margin-top: 28px;
+  padding-top: 16px;
+  text-align: center;
+  font-size: 12px;
+  color: #b0b4bc;
+}
+
+@media (max-width: 700px) {
+  .homepage-footer-columns {
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    gap: 32px;
+  }
+  .homepage-footer-subcols {
+    flex-direction: column;
+    gap: 16px;
+  }
+  .homepage-footer-col {
+    align-items: center;
+  }
+  .homepage-footer-col span.with-badge {
+    justify-content: center;
+  }
+}
+
+@media (max-width: 700px) {
+  .homepage-hero {
+    height: 72vh;
+    min-height: 420px;
+  }
+  .hero-slide-topbar {
+    padding: 0 20px;
+  }
+  .hero-welcome {
+    font-size: 30px;
+  }
+  .hero-welcome-sub {
+    font-size: 15px;
+  }
+  .hero-slide-text {
+    bottom: 96px;
+    padding: 0 20px;
+  }
+  .hero-slide-text h1 {
+    font-size: 24px;
+  }
+  .hero-carousel .slick-dots {
+    bottom: 68px;
+  }
+  .homepage-tiles-overlay {
+    flex-direction: column;
+    left: 12px;
+    right: 12px;
+    bottom: 12px;
+    gap: 8px;
+  }
+  .homepage-tile {
+    padding: 10px 12px;
+  }
 }

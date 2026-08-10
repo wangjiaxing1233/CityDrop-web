@@ -1,147 +1,227 @@
-import React from 'react';
-import { Steps, Card, Button, Space, Descriptions, Tag, Empty, Spin, message, Modal } from 'antd';
-import { getOrder, simulateNext, cancelOrder, confirmPickup } from '../utils';
-import { transportLabel } from '../orderUtils';
+import React from "react";
+import { Typography, Card, Steps, Descriptions, Space, Spin, message } from "antd";
+import { getOrder } from "../utils";
+import { modeLabel, statusLabel, STATUS_SEQUENCE } from "../orderUtils";
+import { RobotHeroBanner } from "./VehicleArt";
 
-const STEP_STATUSES = ['ARRIVED_AT_STATION', 'LEFT_STATION', 'OUT_FOR_DELIVERY', 'DELIVERED'];
-const STEP_TITLES = ['Arrived at station', 'Left station', 'Out for delivery', 'Delivered'];
+const { Title, Text } = Typography;
 
-// Gets its order id from a prop (this.props.orderId, set by App.js's
-// navigate('orderDetail', { orderId })) instead of from the URL
-// (useParams()) — this is the one page that most shows the trade-off of
-// not using react-router-dom: there's no "/orders/A1234" address bar URL
-// to refresh or copy, only in-app navigation.
+const iconChipStyle = {
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+  width: 26,
+  height: 26,
+  borderRadius: 8,
+  background: "#eaf0fc",
+  marginRight: 6,
+  fontSize: 13,
+};
+
 class OrderDetailPage extends React.Component {
   state = {
     order: null,
     loading: true,
-    busy: false,
   };
 
   componentDidMount() {
     this.load();
+    // Same reasoning as MyOrdersPage: status advances on the server side
+    // (mock ticker today, real dispatch updates later) with nothing pushing
+    // that change to the browser, so this page polls while it's open.
+    this.pollTimer = setInterval(this.refresh, 4000);
+  }
+
+  componentWillUnmount() {
+    clearInterval(this.pollTimer);
   }
 
   load = () => {
+    const { orderId } = this.props;
     this.setState({ loading: true });
-    getOrder(this.props.orderId)
+    getOrder(orderId)
       .then((order) => this.setState({ order, loading: false }))
       .catch((err) => {
         message.error(err.message);
-        this.setState({ order: null, loading: false });
+        this.setState({ loading: false });
       });
   };
 
-  handleSimulate = () => {
-    this.setState({ busy: true });
-    simulateNext(this.props.orderId)
-      .then((order) => this.setState({ order, busy: false }))
-      .catch((err) => {
-        message.error(err.message);
-        this.setState({ busy: false });
-      });
+  // Silent refresh for the poll — no spinner, no error toast, and it stops
+  // once the order is delivered since the status can't move further.
+  refresh = () => {
+    const { orderId } = this.props;
+    if (this.state.order && this.state.order.status === "DELIVERED") {
+      clearInterval(this.pollTimer);
+      return;
+    }
+    getOrder(orderId)
+      .then((order) => this.setState({ order }))
+      .catch(() => {});
   };
 
-  handleCancel = () => {
-    this.setState({ busy: true });
-    cancelOrder(this.props.orderId)
-      .then((result) => {
-        if (result.requiresPickupConfirmation) {
-          Modal.confirm({
-            title: 'Confirm cancellation',
-            content: result.message,
-            okText: 'Confirm pickup',
-            cancelText: 'Never mind',
-            onOk: () => {
-              confirmPickup(this.props.orderId)
-                .then((order) => {
-                  this.setState({ order });
-                  message.success('Order cancelled.');
-                })
-                .catch((err) => message.error(err.message));
-            },
-          });
-        } else {
-          this.setState({ order: result });
-          message.success('Order cancelled.');
-        }
-        this.setState({ busy: false });
-      })
-      .catch((err) => {
-        // e.g. the 409 "Delivered orders can't be cancelled" case
-        message.error(err.message);
-        this.setState({ busy: false });
-      });
-  };
+  getStepCurrent(status) {
+    const index = STATUS_SEQUENCE.indexOf(status);
+    return index !== -1 ? index : 0;
+  }
 
   render() {
-    const { navigate, orderId } = this.props;
-    const { order, loading, busy } = this.state;
+    const { navigate } = this.props;
+    const { order, loading } = this.state;
 
     if (loading) {
       return (
-        <div style={{ textAlign: 'center', padding: '60px 0' }}>
-          <Spin />
+        <div style={{ textAlign: "center", padding: "100px 0" }}>
+          <Spin size="large" />
         </div>
       );
     }
 
-    if (!order) {
-      return (
-        <div>
-          <a onClick={() => navigate('myOrders')} style={{ display: 'inline-block', marginBottom: 16, cursor: 'pointer' }}>
-            &larr; Back to My Orders
-          </a>
-          <Empty description={'Order #' + orderId + ' not found.'} />
-        </div>
-      );
-    }
-
-    const disabled = busy || order.status === 'CANCELLED' || order.status === 'DELIVERED';
-    const stepIndex = STEP_STATUSES.indexOf(order.status); // -1 for QUEUED/PENDING_DROPOFF/CANCELLED
+    if (!order) return <Text type="danger">Order not found</Text>;
 
     return (
-      <div>
-        <a onClick={() => navigate('myOrders')} style={{ display: 'inline-block', marginBottom: 16, cursor: 'pointer' }}>
-          &larr; Back to My Orders
-        </a>
-        <h2 style={{ marginTop: 0 }}>Order #{order.id}</h2>
+      <div style={{ maxWidth: 960, margin: "0 auto", padding: "24px 16px" }}>
+        <div
+          onClick={() => navigate("/orders")}
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 6,
+            marginBottom: 16,
+            cursor: "pointer",
+            color: "#8c8c8c",
+            fontSize: 14,
+          }}
+        >
+          <span>&larr;</span> Back to My Orders
+        </div>
 
-        <Descriptions bordered column={1} size="small" style={{ marginBottom: 20 }}>
-          <Descriptions.Item label="Destination">{order.destination}</Descriptions.Item>
-          <Descriptions.Item label="Weight">{order.weightLb} lb</Descriptions.Item>
-          <Descriptions.Item label="Transport">{transportLabel(order.transport)}</Descriptions.Item>
-          <Descriptions.Item label="Station">{order.station}</Descriptions.Item>
-          <Descriptions.Item label="Price">${order.price}</Descriptions.Item>
-        </Descriptions>
+        <Title
+          level={2}
+          style={{ marginTop: 0, marginBottom: 24, fontWeight: 800 }}
+        >
+          Order #{order.orderId}
+        </Title>
 
-        {order.status === 'CANCELLED' && (
-          <Tag color="volcano" style={{ marginBottom: 16 }}>
-            This order has been cancelled
-          </Tag>
-        )}
-        {order.status === 'QUEUED' && (
-          <Tag color="gold" style={{ marginBottom: 16 }}>
-            Queued — waiting for an available {transportLabel(order.transport)}
-          </Tag>
-        )}
+        <div
+          style={{
+            position: "relative",
+            width: "100%",
+            height: 180,
+            borderRadius: 16,
+            overflow: "hidden",
+            marginBottom: 24,
+            boxShadow: "0 10px 30px rgba(30, 39, 97, 0.08)",
+          }}
+        >
+          {order.vehicle === "DRONE" ? (
+            <>
+              <img
+                src="/RD.png"
+                alt="Drone delivery"
+                style={{
+                  width: "100%",
+                  height: "100%",
+                  objectFit: "cover",
+                  objectPosition: "center 55%",
+                  display: "block",
+                }}
+              />
+              <div
+                style={{
+                  position: "absolute",
+                  inset: 0,
+                  background:
+                    "linear-gradient(135deg, rgba(30,39,97,0.55), rgba(20,26,71,0.25))",
+                }}
+              />
+            </>
+          ) : (
+            <RobotHeroBanner style={{ display: "block" }} />
+          )}
+          <div style={{ position: "absolute", left: 20, bottom: 16, color: "#ffffff" }}>
+            <div
+              style={{
+                fontSize: 11,
+                fontWeight: 700,
+                letterSpacing: "2px",
+                textTransform: "uppercase",
+                opacity: 0.85,
+              }}
+            >
+              {order.vehicle === "DRONE" ? "Drone Delivery" : "Ground Robot Delivery"}
+            </div>
+            <div style={{ fontSize: 20, fontWeight: 800 }}>
+              {statusLabel(order.status)}
+            </div>
+          </div>
+        </div>
 
-        <Card style={{ marginBottom: 24 }}>
-          <Steps
-            size="small"
-            current={stepIndex}
-            status={order.status === 'CANCELLED' ? 'error' : order.status === 'DELIVERED' ? 'finish' : 'process'}
-            items={STEP_TITLES.map((title) => ({ title }))}
-          />
-        </Card>
+        <Space direction="vertical" size={24} style={{ width: "100%" }}>
+          <Card
+            bordered={false}
+            style={{
+              borderRadius: 16,
+              boxShadow: "0 4px 12px rgba(0,0,0,0.02)",
+              border: "1px solid #f0f0f0",
+            }}
+            bodyStyle={{ padding: "8px 0" }}
+          >
+            <Descriptions
+              bordered
+              column={1}
+              labelStyle={{
+                width: "200px",
+                backgroundColor: "#fafafa",
+                fontWeight: 600,
+                color: "#434343",
+                padding: "16px 24px",
+              }}
+              contentStyle={{
+                backgroundColor: "#ffffff",
+                color: "#1f1f1f",
+                padding: "16px 24px",
+              }}
+              style={{ overflow: "hidden", borderRadius: 16 }}
+            >
+              <Descriptions.Item label="Destination">
+                <span style={iconChipStyle}>📍</span> {order.destination}
+              </Descriptions.Item>
+              <Descriptions.Item label="Weight">
+                {order.packageWeightLbs} lb
+              </Descriptions.Item>
+              <Descriptions.Item label="Transport">
+                <span style={iconChipStyle}>
+                  {order.vehicle === "DRONE" ? "🛸" : "🤖"}
+                </span>{" "}
+                {modeLabel(order.vehicle)}
+              </Descriptions.Item>
+              <Descriptions.Item label="Station">
+                <span style={iconChipStyle}>🏢</span> Station #{order.stationId}
+              </Descriptions.Item>
+              <Descriptions.Item label="Price">
+                <Text strong style={{ color: "#1f1f1f", fontSize: 15 }}>
+                  {order.price != null ? "$" + order.price : "—"}
+                </Text>
+              </Descriptions.Item>
+            </Descriptions>
+          </Card>
 
-        <Space>
-          <Button disabled={disabled} loading={busy} onClick={this.handleSimulate}>
-            Simulate next step
-          </Button>
-          <Button danger disabled={disabled} loading={busy} onClick={this.handleCancel}>
-            Cancel Order
-          </Button>
+          <Card
+            bordered={false}
+            style={{
+              borderRadius: 16,
+              boxShadow: "0 4px 12px rgba(0,0,0,0.02)",
+              border: "1px solid #f0f0f0",
+              padding: "12px 8px",
+            }}
+          >
+            <Steps
+              current={this.getStepCurrent(order.status)}
+              status={order.status === "DELIVERED" ? "finish" : "process"}
+              items={STATUS_SEQUENCE.map((s) => ({ title: statusLabel(s) }))}
+            />
+          </Card>
         </Space>
       </div>
     );
