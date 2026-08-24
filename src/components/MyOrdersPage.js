@@ -4,7 +4,6 @@ import {
   Button,
   Typography,
   Tag,
-  List,
   Spin,
   message,
   Tabs,
@@ -14,6 +13,7 @@ import {
 import { getOrders } from "../utils";
 import { statusLabel } from "../orderUtils";
 import { colors } from "../theme";
+import { RobotHeroBanner } from "./VehicleArt";
 
 const { Title, Text } = Typography;
 
@@ -66,6 +66,24 @@ class MyOrdersPage extends React.Component {
           Delivered
         </Tag>
       );
+    if (o.status === "CANCELLED")
+      return (
+        <Tag
+          color="default"
+          style={{ borderRadius: 12, padding: "2px 10px", margin: 0 }}
+        >
+          Cancelled
+        </Tag>
+      );
+    if (o.status === "QUEUED")
+      return (
+        <Tag
+          color="gold"
+          style={{ borderRadius: 12, padding: "2px 10px", margin: 0 }}
+        >
+          Queued
+        </Tag>
+      );
     return (
       <Tag
         color="processing"
@@ -79,97 +97,154 @@ class MyOrdersPage extends React.Component {
   renderList(list) {
     const { navigate } = this.props;
     return (
-      <List
-        dataSource={list}
-        split={false}
-        renderItem={(o) => (
-          <List.Item style={{ padding: "0 0 16px 0" }}>
-            <Card
-              hoverable
-              onClick={() => navigate("/orders/" + o.orderId)}
-              bodyStyle={{ padding: "20px" }}
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))",
+          gap: 20,
+        }}
+      >
+        {list.map((o) => (
+          <Card
+            key={o.orderId}
+            hoverable
+            onClick={() => navigate("/orders/" + o.orderId)}
+            bodyStyle={{ padding: "24px" }}
+            cover={
+              <div style={{ position: "relative", height: 130, overflow: "hidden" }}>
+                {o.vehicle === "DRONE" ? (
+                  <>
+                    <img
+                      src="/RD.png"
+                      alt="Drone delivery"
+                      style={{
+                        width: "100%",
+                        height: "100%",
+                        objectFit: "cover",
+                        objectPosition: "center 30%",
+                        display: "block",
+                      }}
+                    />
+                    <div
+                      style={{
+                        position: "absolute",
+                        inset: 0,
+                        background:
+                          "linear-gradient(135deg, rgba(30,39,97,0.55), rgba(20,26,71,0.25))",
+                      }}
+                    />
+                  </>
+                ) : (
+                  <RobotHeroBanner style={{ display: "block" }} />
+                )}
+              </div>
+            }
+            style={{
+              borderRadius: 16,
+              boxShadow: "0 4px 14px rgba(30, 39, 97, 0.06)",
+              border: "1px solid #f0f0f0",
+              borderLeft: `4px solid ${
+                o.status === "DELIVERED"
+                  ? "#22c55e"
+                  : o.status === "CANCELLED"
+                    ? "#bfbfbf"
+                    : o.status === "QUEUED"
+                      ? "#faad14"
+                      : colors.navy
+              }`,
+              overflow: "hidden",
+            }}
+          >
+            <div
               style={{
-                width: "100%",
-                borderRadius: 12,
-                boxShadow: "0 2px 8px rgba(0,0,0,0.04)",
-                border: "1px solid #f0f0f0",
-                borderLeft: `4px solid ${
-                  o.status === "DELIVERED" ? "#22c55e" : colors.navy
-                }`,
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "flex-start",
+                marginBottom: 16,
               }}
             >
-              <div
-                style={{
-                  display: "flex",
-                  justifyContent: "space-between",
-                  alignItems: "flex-start",
-                  marginBottom: 12,
-                }}
-              >
-                <Space direction="vertical" size={2}>
-                  <Space size={6}>
-                    <span style={{ fontSize: 14 }}>
-                      {o.vehicle === "DRONE" ? "🛸" : "🤖"}
-                    </span>
-                    <Text strong style={{ fontSize: 16, color: "#1f1f1f" }}>
-                      #{o.orderId}
-                    </Text>
-                  </Space>
-                  <Text type="secondary" style={{ fontSize: 12 }}>
-                    Estimated Delivery
+              <Space direction="vertical" size={2}>
+                <Space size={6}>
+                  <span style={{ fontSize: 15 }}>
+                    {o.vehicle === "DRONE" ? "🛸" : "🤖"}
+                  </span>
+                  <Text strong style={{ fontSize: 17, color: "#1f1f1f" }}>
+                    #{o.orderId}
                   </Text>
                 </Space>
-                {this.badge(o)}
-              </div>
-
-              <div
-                style={{
-                  padding: "12px 0",
-                  borderTop: "1px dashed #f0f0f0",
-                  borderBottom: "1px dashed #f0f0f0",
-                  marginBottom: 12,
-                }}
-              >
-                <Text
-                  style={{
-                    color: "#434343",
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 6,
-                  }}
-                >
-                  <span style={{ fontSize: 14 }}>📍</span> {o.destination}
+                <Text type="secondary" style={{ fontSize: 12 }}>
+                  {o.status === "QUEUED"
+                    ? o.estimatedWaitMs != null
+                      ? "Estimated wait: ~" +
+                        Math.max(1, Math.round(o.estimatedWaitMs / 60000)) +
+                        " min"
+                      : "Estimated wait: unknown"
+                    : o.time != null
+                      ? "Estimated Delivery: " +
+                        Math.round(o.time * 10) / 10 +
+                        " min" +
+                        (o.timeIsFallback ? " (estimated)" : "")
+                      : "Estimated Delivery"}
                 </Text>
-              </div>
+              </Space>
+              {this.badge(o)}
+            </div>
 
-              <div
+            <div
+              style={{
+                padding: "14px 0",
+                borderTop: "1px dashed #f0f0f0",
+                borderBottom: "1px dashed #f0f0f0",
+                marginBottom: 16,
+              }}
+            >
+              <Text
                 style={{
+                  color: "#434343",
                   display: "flex",
-                  justifyContent: "space-between",
                   alignItems: "center",
+                  gap: 6,
                 }}
               >
-                <Text type="secondary" style={{ fontSize: 13 }}>
-                  Total Paid
-                </Text>
-                <Text strong style={{ fontSize: 18, color: "#1f1f1f" }}>
-                  {o.price != null ? "$" + o.price : "—"}
-                </Text>
-              </div>
-            </Card>
-          </List.Item>
-        )}
-      />
+                <span style={{ fontSize: 14 }}>📍</span> {o.destination}
+              </Text>
+            </div>
+
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+              }}
+            >
+              <Text type="secondary" style={{ fontSize: 13 }}>
+                Total Paid
+              </Text>
+              <Text strong style={{ fontSize: 19, color: "#1f1f1f" }}>
+                {o.price != null ? "$" + o.price : "—"}
+              </Text>
+            </div>
+          </Card>
+        ))}
+      </div>
     );
   }
 
   render() {
-    const { navigate } = this.props;
+    const { navigate, activeTab, setActiveTab } = this.props;
     const { active, completed, loading } = this.state;
     const orders = active.length + completed.length;
 
     return (
-      <div style={{ maxWidth: 768, margin: "0 auto", padding: "24px 16px" }}>
+      <div
+        style={{
+          width: "100%",
+          maxWidth: 1080,
+          margin: "0 auto",
+          padding: "24px 16px",
+          boxSizing: "border-box",
+        }}
+      >
         <div
           onClick={() => navigate("/")}
           style={{
@@ -225,7 +300,8 @@ class MyOrdersPage extends React.Component {
           </Card>
         ) : (
           <Tabs
-            defaultActiveKey="1"
+            activeKey={activeTab}
+            onChange={setActiveTab}
             size="large"
             tabBarStyle={{ marginBottom: 24 }}
             items={[

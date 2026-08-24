@@ -1,8 +1,25 @@
 import React from "react";
-import { Typography, Card, Steps, Descriptions, Space, Spin, message } from "antd";
-import { getOrder } from "../utils";
-import { modeLabel, statusLabel, STATUS_SEQUENCE } from "../orderUtils";
+import {
+  Typography,
+  Card,
+  Steps,
+  Descriptions,
+  Space,
+  Spin,
+  message,
+  Button,
+  Popconfirm,
+  Tag,
+} from "antd";
+import { getOrder, confirmAtStation, cancelOrder } from "../utils";
+import {
+  modeLabel,
+  statusLabel,
+  STATUS_SEQUENCE,
+  isCancellable,
+} from "../orderUtils";
 import { RobotHeroBanner } from "./VehicleArt";
+import { TrackingMap } from "./TrackingMap";
 
 const { Title, Text } = Typography;
 
@@ -22,6 +39,8 @@ class OrderDetailPage extends React.Component {
   state = {
     order: null,
     loading: true,
+    confirming: false,
+    cancelling: false,
   };
 
   componentDidMount() {
@@ -48,10 +67,11 @@ class OrderDetailPage extends React.Component {
   };
 
   // Silent refresh for the poll — no spinner, no error toast, and it stops
-  // once the order is delivered since the status can't move further.
+  // once the order is in a terminal state (delivered or cancelled) since
+  // the status can't move further either way.
   refresh = () => {
     const { orderId } = this.props;
-    if (this.state.order && this.state.order.status === "DELIVERED") {
+    if (this.state.order && !isCancellable(this.state.order.status)) {
       clearInterval(this.pollTimer);
       return;
     }
@@ -65,9 +85,208 @@ class OrderDetailPage extends React.Component {
     return index !== -1 ? index : 0;
   }
 
+  // CANCELLED and QUEUED both sit outside STATUS_SEQUENCE (see orderUtils),
+  // so neither one has a sane position on the Steps progress bar — each
+  // gets its own explanatory card instead.
+  renderProgressCard(order, confirming) {
+    if (order.status === "CANCELLED") {
+      return (
+        <Card
+          bordered={false}
+          style={{
+            borderRadius: 16,
+            boxShadow: "0 4px 12px rgba(0,0,0,0.02)",
+            border: "1px solid #f0f0f0",
+            textAlign: "center",
+            padding: "8px 0",
+          }}
+        >
+          <Text type="secondary">
+            {order.missedDropoff
+              ? "This order was automatically cancelled — the package wasn't dropped off at the station in time."
+              : "This order was cancelled and will not be delivered."}
+          </Text>
+        </Card>
+      );
+    }
+
+    // PENDING_DROPOFF is a text card, not the map — nothing has moved yet
+    // (the package is still with the user, not the vehicle), so a "station
+    // -> destination" route with the vehicle icon parked at the station
+    // start would just be showing a leg that hasn't started, not the leg
+    // the user is actually on. There's no real-time-tracking data source
+    // (or design-doc requirement) for their own trip to the station either.
+    if (order.status === "PENDING_DROPOFF") {
+      return (
+        <Card
+          bordered={false}
+          style={{
+            borderRadius: 16,
+            boxShadow: "0 4px 12px rgba(0,0,0,0.02)",
+            border: "1px solid #f0f0f0",
+            textAlign: "center",
+            padding: "8px 0",
+          }}
+        >
+          <Text type="secondary">
+            Drop your package off at Station #{order.stationId} to start the{" "}
+            {modeLabel(order.vehicle).toLowerCase()} delivery.
+          </Text>
+          {order.dropoffDeadline != null && (
+            <div style={{ marginTop: 10 }}>
+              <Text type="secondary" style={{ fontSize: 13 }}>
+                Drop off by{" "}
+                <Text
+                  strong
+                  style={{
+                    color: "#E8A33D",
+                    background: "#fdf3e3",
+                    padding: "1px 8px",
+                    borderRadius: 999,
+                  }}
+                >
+                  {new Date(order.dropoffDeadline).toLocaleTimeString([], {
+                    hour: "numeric",
+                    minute: "2-digit",
+                  })}
+                </Text>{" "}
+                — after that the order is automatically cancelled and the
+                vehicle is released.
+              </Text>
+            </div>
+          )}
+          <div style={{ textAlign: "center", marginTop: 16 }}>
+            <Button
+              type="primary"
+              shape="round"
+              size="large"
+              loading={confirming}
+              onClick={this.handleConfirmAtStation}
+              style={{ paddingLeft: 24, paddingRight: 24 }}
+            >
+              I've dropped off my package at the station
+            </Button>
+          </div>
+        </Card>
+      );
+    }
+
+    if (order.status === "QUEUED") {
+      return (
+        <Card
+          bordered={false}
+          style={{
+            borderRadius: 16,
+            boxShadow: "0 4px 12px rgba(0,0,0,0.02)",
+            border: "1px solid #f0f0f0",
+            textAlign: "center",
+            padding: "8px 0",
+          }}
+        >
+          <Text type="secondary">
+            Waiting for a {modeLabel(order.vehicle).toLowerCase()} to free up
+            at Station #{order.stationId} — you're in line, first come first
+            served. This won't move until one becomes available.
+          </Text>
+          <div style={{ marginTop: 10 }}>
+            {order.estimatedWaitMs != null ? (
+              <Text
+                strong
+                style={{
+                  color: "#E8A33D",
+                  background: "#fdf3e3",
+                  padding: "2px 10px",
+                  borderRadius: 999,
+                  fontSize: 13,
+                }}
+              >
+                Estimated wait: ~
+                {Math.max(1, Math.round(order.estimatedWaitMs / 60000))} min
+              </Text>
+            ) : (
+              <Text type="secondary" style={{ fontSize: 12 }}>
+                Wait time depends on how quickly the orders ahead of you get
+                dropped off — no estimate yet.
+              </Text>
+            )}
+          </div>
+        </Card>
+      );
+    }
+
+    return (
+      <Card
+        bordered={false}
+        style={{
+          borderRadius: 16,
+          boxShadow: "0 4px 12px rgba(0,0,0,0.02)",
+          border: "1px solid #f0f0f0",
+          padding: "12px 8px",
+        }}
+      >
+        <div style={{ padding: "0 8px 20px" }}>
+          <TrackingMap
+            progress={
+              this.getStepCurrent(order.status) / (STATUS_SEQUENCE.length - 1)
+            }
+            vehicle={order.vehicle}
+            destination={order.destination}
+            stationId={order.stationId}
+          />
+        </div>
+        <Steps
+          current={this.getStepCurrent(order.status)}
+          status={order.status === "DELIVERED" ? "finish" : "process"}
+          items={STATUS_SEQUENCE.map((s) => ({ title: statusLabel(s) }))}
+        />
+      </Card>
+    );
+  }
+
+  // PENDING_DROPOFF is the one stage that waits on the user instead of the
+  // poll ticker — they physically dropped the package at the station, so
+  // they're the ones who know it happened.
+  handleConfirmAtStation = () => {
+    const { order } = this.state;
+    this.setState({ confirming: true });
+    confirmAtStation(order.orderId)
+      .then((updated) => {
+        this.setState({ order: updated, confirming: false });
+        if (updated.status === "QUEUED") {
+          message.info(
+            "No vehicle was free when you arrived — you've been added to " +
+              "the queue and will get a new drop-off deadline once one " +
+              "frees up.",
+          );
+        }
+      })
+      .catch((err) => {
+        message.error(err.message);
+        this.setState({ confirming: false });
+      });
+  };
+
+  handleCancelOrder = () => {
+    const { order } = this.state;
+    this.setState({ cancelling: true });
+    cancelOrder(order.orderId)
+      .then((updated) => {
+        this.setState({ order: updated, cancelling: false });
+        message.success(
+          updated.refundEligible
+            ? "Order cancelled — you're eligible for a refund."
+            : "Order cancelled — this order was too far along to be refund-eligible.",
+        );
+      })
+      .catch((err) => {
+        message.error(err.message);
+        this.setState({ cancelling: false });
+      });
+  };
+
   render() {
     const { navigate } = this.props;
-    const { order, loading } = this.state;
+    const { order, loading, confirming, cancelling } = this.state;
 
     if (loading) {
       return (
@@ -80,9 +299,16 @@ class OrderDetailPage extends React.Component {
     if (!order) return <Text type="danger">Order not found</Text>;
 
     return (
-      <div style={{ maxWidth: 960, margin: "0 auto", padding: "24px 16px" }}>
+      <div
+        style={{
+          width: "92%",
+          maxWidth: 1800,
+          margin: "0 auto",
+          padding: "24px 16px",
+        }}
+      >
         <div
-          onClick={() => navigate("/orders")}
+          onClick={() => navigate(-1)}
           style={{
             display: "inline-flex",
             alignItems: "center",
@@ -123,7 +349,7 @@ class OrderDetailPage extends React.Component {
                   width: "100%",
                   height: "100%",
                   objectFit: "cover",
-                  objectPosition: "center 55%",
+                  objectPosition: "center 30%",
                   display: "block",
                 }}
               />
@@ -139,6 +365,15 @@ class OrderDetailPage extends React.Component {
           ) : (
             <RobotHeroBanner style={{ display: "block" }} />
           )}
+          {order.status === "CANCELLED" && (
+            <div
+              style={{
+                position: "absolute",
+                inset: 0,
+                background: "rgba(20, 20, 20, 0.55)",
+              }}
+            />
+          )}
           <div style={{ position: "absolute", left: 20, bottom: 16, color: "#ffffff" }}>
             <div
               style={{
@@ -151,7 +386,18 @@ class OrderDetailPage extends React.Component {
             >
               {order.vehicle === "DRONE" ? "Drone Delivery" : "Ground Robot Delivery"}
             </div>
-            <div style={{ fontSize: 20, fontWeight: 800 }}>
+            <div
+              style={{
+                fontSize: 20,
+                fontWeight: 800,
+                color:
+                  order.status === "CANCELLED"
+                    ? "#ff4d4f"
+                    : order.status === "QUEUED"
+                      ? "#faad14"
+                      : "#ffffff",
+              }}
+            >
               {statusLabel(order.status)}
             </div>
           </div>
@@ -199,29 +445,50 @@ class OrderDetailPage extends React.Component {
               <Descriptions.Item label="Station">
                 <span style={iconChipStyle}>🏢</span> Station #{order.stationId}
               </Descriptions.Item>
+              {order.time != null && (
+                <Descriptions.Item label="Estimated time">
+                  {Math.round(order.time * 10) / 10} min
+                  {order.timeIsFallback && (
+                    <Text type="secondary" style={{ fontSize: 12 }}>
+                      {" "}
+                      (estimated — mapping service was unavailable)
+                    </Text>
+                  )}
+                </Descriptions.Item>
+              )}
               <Descriptions.Item label="Price">
                 <Text strong style={{ color: "#1f1f1f", fontSize: 15 }}>
                   {order.price != null ? "$" + order.price : "—"}
                 </Text>
               </Descriptions.Item>
+              {order.status === "CANCELLED" && (
+                <Descriptions.Item label="Refund">
+                  <Tag color={order.refundEligible ? "success" : "default"}>
+                    {order.refundEligible ? "Eligible" : "Not eligible"}
+                  </Tag>
+                </Descriptions.Item>
+              )}
             </Descriptions>
           </Card>
 
-          <Card
-            bordered={false}
-            style={{
-              borderRadius: 16,
-              boxShadow: "0 4px 12px rgba(0,0,0,0.02)",
-              border: "1px solid #f0f0f0",
-              padding: "12px 8px",
-            }}
-          >
-            <Steps
-              current={this.getStepCurrent(order.status)}
-              status={order.status === "DELIVERED" ? "finish" : "process"}
-              items={STATUS_SEQUENCE.map((s) => ({ title: statusLabel(s) }))}
-            />
-          </Card>
+          {isCancellable(order.status) && (
+            <div style={{ display: "flex", justifyContent: "flex-end" }}>
+              <Popconfirm
+                title="Cancel this order?"
+                description="This can't be undone."
+                okText="Yes, cancel it"
+                cancelText="Keep order"
+                okButtonProps={{ danger: true }}
+                onConfirm={this.handleCancelOrder}
+              >
+                <Button danger loading={cancelling}>
+                  Cancel order
+                </Button>
+              </Popconfirm>
+            </div>
+          )}
+
+          {this.renderProgressCard(order, confirming)}
         </Space>
       </div>
     );

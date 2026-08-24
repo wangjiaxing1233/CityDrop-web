@@ -4,16 +4,31 @@ import React from "react";
 // on the login screen), so this hand-drawn scene stands in for one — same
 // navy/gold palette, same "same-city street" idea as the drone photo, sized
 // to sit in the same hero-banner slot on the order detail page.
+//
+// The gradient needs a per-instance id: SVG ids live in one flat namespace
+// across the whole document, not scoped to each inline <svg>. MyOrdersPage
+// renders one of these per card, so a hardcoded id collided across cards —
+// browsers don't reliably resolve url(#id) when the same id appears more
+// than once, which showed up as some cards' hero banner losing its navy
+// gradient entirely.
+let heroBannerIdCounter = 0;
+
 export function RobotHeroBanner({ style }) {
+  const gradientIdRef = React.useRef(null);
+  if (!gradientIdRef.current) {
+    gradientIdRef.current = "robotHeroBg-" + heroBannerIdCounter++;
+  }
+  const gradientId = gradientIdRef.current;
+
   return (
     <svg viewBox="0 0 900 180" width="100%" height="100%" style={style} preserveAspectRatio="xMidYMid slice">
       <defs>
-        <linearGradient id="robotHeroBg" x1="0" y1="0" x2="1" y2="1">
+        <linearGradient id={gradientId} x1="0" y1="0" x2="1" y2="1">
           <stop offset="0%" stopColor="#1E2761" />
           <stop offset="100%" stopColor="#141a47" />
         </linearGradient>
       </defs>
-      <rect width="900" height="180" fill="url(#robotHeroBg)" />
+      <rect width="900" height="180" fill={`url(#${gradientId})`} />
       <g fill="#2a3372" opacity="0.6">
         <rect x="10" y="116" width="34" height="60" />
         <rect x="50" y="94" width="26" height="82" />
