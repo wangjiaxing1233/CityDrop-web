@@ -11,14 +11,33 @@ const GREETING =
 // user id itself. It can only look up orders, never cancel or change one
 // directly — see ChatService's system prompt on the backend for why
 // suggest_cancel_order is a confirm-first shortcut, not a direct action.
+function loadPersistedMessages(storageKey) {
+  try {
+    const raw = localStorage.getItem(storageKey);
+    const parsed = raw && JSON.parse(raw);
+    if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+  } catch (e) {
+    // corrupt/foreign value under this key -- fall through to a fresh greeting
+  }
+  return [{ role: 'assistant', content: GREETING }];
+}
+
 class SupportPage extends React.Component {
   constructor(props) {
     super(props);
+    // Scoped per logged-in user so switching accounts on the same browser
+    // never shows one user's conversation to another.
+    this.storageKey = 'citydrop:chatHistory:' + (props.user || 'anon');
     this.state = {
-      messages: [{ role: 'assistant', content: GREETING }],
+      messages: loadPersistedMessages(this.storageKey),
       inputValue: '',
       sending: false,
       recording: false,
+      // idle: no reply has ever been spoken yet, nothing to control.
+      // playing/paused: normal pause-and-resume, from wherever it left off.
+      // ended: reply played through to the end -- toggling starts it over,
+      // since "resume" from the end would just do nothing.
+      audioState: 'idle',
     };
     this.scrollRef = React.createRef();
     this.audioRef = React.createRef();
@@ -27,11 +46,26 @@ class SupportPage extends React.Component {
   }
 
   componentDidUpdate(prevProps, prevState) {
+    if (prevState.messages !== this.state.messages) {
+      try {
+        localStorage.setItem(this.storageKey, JSON.stringify(this.state.messages));
+      } catch (e) {
+        // storage full/unavailable (e.g. private browsing) -- conversation
+        // just won't survive navigation this time, nothing else to do
+      }
+    }
     if (prevState.messages.length !== this.state.messages.length) {
       const el = this.scrollRef.current;
       if (el) el.scrollTop = el.scrollHeight;
     }
   }
+
+  handleClearConversation = () => {
+    if (!window.confirm('Clear this conversation? This can\'t be undone.')) return;
+    const el = this.audioRef.current;
+    if (el && !el.paused) el.pause();
+    this.setState({ messages: [{ role: 'assistant', content: GREETING }] });
+  };
 
   componentWillUnmount() {
     if (this.mediaRecorder && this.mediaRecorder.state !== 'inactive') {
@@ -58,12 +92,26 @@ class SupportPage extends React.Component {
     }));
 
     try {
-      const { reply, suggestCreateOrder, offerHumanHelp, suggestCancelOrderId } =
-        await sendChatMessage(text, history);
+      const {
+        reply,
+        suggestCreateOrder,
+        offerHumanHelp,
+        suggestCancelOrderId,
+        suggestedDestination,
+        suggestedWeightLbs,
+      } = await sendChatMessage(text, history);
       this.setState((prev) => ({
         messages: [
           ...prev.messages,
-          { role: 'assistant', content: reply, suggestCreateOrder, offerHumanHelp, suggestCancelOrderId },
+          {
+            role: 'assistant',
+            content: reply,
+            suggestCreateOrder,
+            offerHumanHelp,
+            suggestCancelOrderId,
+            suggestedDestination,
+            suggestedWeightLbs,
+          },
         ],
         sending: false,
       }));
@@ -100,6 +148,17 @@ class SupportPage extends React.Component {
       // A voice-reply failure shouldn't undo the (already-successful) text
       // reply that's already on screen.
     }
+  };
+
+  toggleAudio = () => {
+    const el = this.audioRef.current;
+    if (!el || !el.src || this.state.audioState === 'idle') return;
+    if (this.state.audioState === 'playing') {
+      el.pause();
+      return;
+    }
+    if (this.state.audioState === 'ended') el.currentTime = 0;
+    el.play().catch(() => {});
   };
 
   handleMicClick = async () => {
@@ -204,7 +263,7 @@ class SupportPage extends React.Component {
   };
 
   render() {
-    const { messages, inputValue, sending, recording } = this.state;
+    const { messages, inputValue, sending, recording, audioState } = this.state;
 
     return (
       <div style={{ maxWidth: 640, margin: '0 auto' }}>
@@ -222,17 +281,33 @@ class SupportPage extends React.Component {
         >
           <span style={{ fontSize: 20, lineHeight: 1 }}>&larr;</span> Back to Home
         </a>
-        <h2
+        <div
           style={{
-            marginTop: 0,
-            color: colors.navy,
-            fontWeight: 700,
-            fontSize: 24,
+            display: 'flex',
+            alignItems: 'baseline',
+            justifyContent: 'space-between',
             marginBottom: 24,
           }}
         >
-          Support
-        </h2>
+          <h2
+            style={{
+              margin: 0,
+              color: colors.navy,
+              fontWeight: 700,
+              fontSize: 24,
+            }}
+          >
+            Support
+          </h2>
+          {messages.length > 1 && (
+            <a
+              onClick={this.handleClearConversation}
+              style={{ cursor: 'pointer', fontSize: 13, color: '#94a3b8' }}
+            >
+              Clear conversation
+            </a>
+          )}
+        </div>
 
         <div
           style={{
@@ -261,7 +336,14 @@ class SupportPage extends React.Component {
                 role={m.role}
                 content={m.content}
                 showCreateOrder={m.suggestCreateOrder}
-                onCreateOrder={() => this.props.navigate('/order')}
+                onCreateOrder={() =>
+                  this.props.navigate('/order', {
+                    state: {
+                      destination: m.suggestedDestination,
+                      weightLb: m.suggestedWeightLbs,
+                    },
+                  })
+                }
                 offerHumanHelp={m.offerHumanHelp}
                 cancelOrderId={m.suggestCancelOrderId}
                 onCancelOrder={this.handleCancelOrder}
@@ -290,6 +372,22 @@ class SupportPage extends React.Component {
               onPressEnter={this.handleSend}
             />
             <Button
+              onClick={this.toggleAudio}
+              disabled={audioState === 'idle'}
+              title={
+                audioState === 'playing'
+                  ? 'Stop reading the reply aloud'
+                  : audioState === 'ended'
+                    ? 'Play the reply again from the start'
+                    : audioState === 'paused'
+                      ? 'Resume reading the reply aloud'
+                      : 'No reply to read aloud yet'
+              }
+              style={{ minWidth: 44 }}
+            >
+              {audioState === 'playing' ? '🔇' : '🔊'}
+            </Button>
+            <Button
               onClick={this.handleMicClick}
               disabled={sending}
               danger={recording}
@@ -310,7 +408,17 @@ class SupportPage extends React.Component {
         {/* Feature 4, voice: hidden player for TTS replies — src is set and
             played from playReply() above rather than rendered per-message,
             since only the most recent reply should ever be spoken. */}
-        <audio ref={this.audioRef} style={{ display: 'none' }} />
+        <audio
+          ref={this.audioRef}
+          style={{ display: 'none' }}
+          onPlay={() => this.setState({ audioState: 'playing' })}
+          onPause={(e) => {
+            // Firing on both a manual pause and playback reaching the end --
+            // onEnded (right after this) is what should own the 'ended' state.
+            if (!e.target.ended) this.setState({ audioState: 'paused' });
+          }}
+          onEnded={() => this.setState({ audioState: 'ended' })}
+        />
       </div>
     );
   }

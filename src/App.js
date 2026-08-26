@@ -48,6 +48,16 @@ function OrderDetailRoute({ navigate }) {
   return <OrderDetailPage orderId={orderId} navigate={navigate} />;
 }
 
+// Lets SupportPage's "Create order" shortcut hand off what was already
+// discussed in chat (destination/weight from the last get_delivery_quote
+// call) via router state, instead of OrderPage always starting blank —
+// location.state is only readable through the useLocation hook, which a
+// class component can't call itself.
+function OrderRoute({ navigate }) {
+  const location = useLocation();
+  return <OrderPage navigate={navigate} prefill={location.state} />;
+}
+
 // MyOrdersPage is a class component, so it can't call useSearchParams itself —
 // this wrapper reads/writes the active tab via the URL (?tab=1|2) so that
 // "back" from an order detail page lands on whichever tab the user was on,
@@ -381,7 +391,7 @@ function App() {
           />
           <Route
             path="/order"
-            element={requireAuth(<OrderPage navigate={navigate} />)}
+            element={requireAuth(<OrderRoute navigate={navigate} />)}
           />
           <Route
             path="/orders"
@@ -393,7 +403,7 @@ function App() {
           />
           <Route
             path="/support"
-            element={requireAuth(<SupportPage navigate={navigate} />)}
+            element={requireAuth(<SupportPage navigate={navigate} user={user} />)}
           />
           <Route path="/settings" element={<SettingsPage navigate={navigate} />} />
           <Route

@@ -22,6 +22,7 @@ import {
   placeOrder,
   cancelOrder,
   QuoteExpiredError,
+  VehicleUnavailableError,
 } from "../utils";
 import { modeLabel, isCancellable, parseAddress } from "../orderUtils";
 import { colors } from "../theme";
@@ -84,6 +85,11 @@ class OrderPage extends React.Component {
     quoteExpiresAt: null,
     now: Date.now(),
     allowQueue: false,
+    // Set when a submission fails because the real backend discovered the
+    // station is sold out (see placeOrderReal's 409 -> VehicleUnavailableError).
+    // The quote step never knows this in advance (available is always true
+    // for a real quote), so this is what reveals the "join queue" checkbox.
+    submitFailedUnavailable: false,
     placedOrder: null,
     placedStationName: null,
     cancellingPlacedOrder: false,
@@ -152,7 +158,8 @@ class OrderPage extends React.Component {
     const destination = [
       address.destStreet,
       address.destCity,
-      address.destState + " " + address.destZip,
+      address.destState,
+      address.destZip,
     ]
       .filter(Boolean)
       .join(", ");
@@ -164,14 +171,20 @@ class OrderPage extends React.Component {
         packageWeightLbs: address.weightLb,
         stationId: selected.stationId,
         vehicle: selected.mode,
-        quoteId: selected.quoteId,
-        allowQueue,
+        queueIfUnavailable: allowQueue,
       });
       this.setState({ placedOrder: order, placedStationName: selected.stationName });
     } catch (err) {
       if (err instanceof QuoteExpiredError) {
         message.error(err.message);
         this.backToForm();
+      } else if (err instanceof VehicleUnavailableError) {
+        // The real backend only discovers "sold out" here, at submission
+        // time -- flip this on so the render below reveals the "join
+        // queue" checkbox, then the user can check it and press Confirm
+        // again to resubmit with queueIfUnavailable: true.
+        message.error(err.message);
+        this.setState({ submitFailedUnavailable: true });
       } else {
         message.error(err.message);
       }
@@ -206,6 +219,22 @@ class OrderPage extends React.Component {
   // Ref to the paste box itself (it's uncontrolled -- not part of the antd
   // Form, just a convenience shortcut) so a successful parse can clear it.
   pasteInputRef = React.createRef();
+
+  // Defaults the form to whatever was already discussed in a chat turn that
+  // led here (SupportPage's "Create order" shortcut, via router state) --
+  // falls back to the same placeholder address as always when there's
+  // nothing to prefill (a fresh visit, direct link, etc.).
+  getInitialFormValues = () => {
+    const { prefill } = this.props;
+    const parsed = prefill?.destination ? parseAddress(prefill.destination) : null;
+    return {
+      street: parsed?.street ?? "88 Mission St",
+      city: parsed?.city ?? "San Francisco",
+      state: parsed?.state ?? "CA",
+      zip: parsed?.zip ?? "94105",
+      weight: prefill?.weightLb ?? 3,
+    };
+  };
 
   applyParsedAddress = (text) => {
     const parsed = parseAddress(text);
@@ -254,6 +283,7 @@ class OrderPage extends React.Component {
       step: 0,
       quoteExpiresAt: null,
       allowQueue: false,
+      submitFailedUnavailable: false,
     });
   };
 
@@ -274,6 +304,7 @@ class OrderPage extends React.Component {
       quoteExpiresAt: null,
       now: Date.now(),
       allowQueue: false,
+      submitFailedUnavailable: false,
       placedOrder: null,
       placedStationName: null,
       cancellingPlacedOrder: false,
@@ -291,6 +322,7 @@ class OrderPage extends React.Component {
       quoteExpiresAt,
       now,
       allowQueue,
+      submitFailedUnavailable,
       placedOrder,
       placedStationName,
       cancellingPlacedOrder,
@@ -461,13 +493,7 @@ class OrderPage extends React.Component {
               ref={this.formRef}
               layout="vertical"
               onFinish={this.handleFormFinish}
-              initialValues={{
-                street: "88 Mission St",
-                city: "San Francisco",
-                state: "CA",
-                zip: "94105",
-                weight: 3,
-              }}
+              initialValues={this.getInitialFormValues()}
               requiredMark={false}
             >
               <Form.Item
@@ -698,7 +724,12 @@ class OrderPage extends React.Component {
               <Radio.Group
                 style={{ width: "100%" }}
                 value={selectedKey}
-                onChange={(e) => this.setState({ selectedKey: e.target.value })}
+                onChange={(e) =>
+                  this.setState({
+                    selectedKey: e.target.value,
+                    submitFailedUnavailable: false,
+                  })
+                }
               >
                 <div
                   style={{
@@ -908,7 +939,7 @@ class OrderPage extends React.Component {
                 </Descriptions>
               )}
 
-              {selected && !selected.available && (
+              {selected && (!selected.available || submitFailedUnavailable) && (
                 <div
                   style={{
                     marginBottom: 20,
@@ -943,7 +974,7 @@ class OrderPage extends React.Component {
                 disabled={
                   !selected ||
                   quoteExpired ||
-                  (!selected.available && !allowQueue)
+                  ((!selected.available || submitFailedUnavailable) && !allowQueue)
                 }
                 style={{
                   marginRight: 16,

@@ -103,15 +103,11 @@ function adaptDeliveryQuote(quote, quoteId, expiresAt) {
     timeIsFallback: false,
     quoteId,
     expiresAt,
-    // The real DeliveryQuote has no availability field at all -- the real
-    // backend only checks vehicle stock at submission time (POST /order),
-    // not at quote time. Defaulting to true here means every quote is
-    // selectable; a genuinely sold-out station surfaces as a submission
-    // error instead (handled in handleConfirm), rather than every option
-    // showing as permanently "Sold out" regardless of real stock.
-    available: true,
-    // Not enforced server-side yet (submitOrder recomputes fresh at
-    // placement time) -- this only drives the countdown banner's UI.
+    // quote.available (spread in above) is now a real field from the
+    // backend -- a best-effort snapshot of stock at quote time, not a
+    // reservation. submitOrder still re-checks for real at placement time
+    // (see VehicleUnavailableError handling in handleConfirm), so this can
+    // still go stale between the quote and the submit.
   };
 }
 
@@ -134,7 +130,16 @@ async function placeOrderReal(fields) {
     body: JSON.stringify(fields),
     ...CREDENTIALS,
   });
-  if (!response.ok) throw new Error(await readError(response));
+  if (!response.ok) {
+    const errorMessage = await readError(response);
+    // The real backend only discovers "sold out" at submission time (see
+    // adaptDeliveryQuote's available:true note) -- a 409 here is that
+    // discovery. Surfacing it as VehicleUnavailableError (not a plain
+    // Error) is what lets OrderPage's handleConfirm catch it specifically
+    // and reveal the "join the queue" checkbox, same as the mock path.
+    if (response.status === 409) throw new VehicleUnavailableError(errorMessage);
+    throw new Error(errorMessage);
+  }
   return response.json(); // Order
 }
 
