@@ -104,10 +104,10 @@ function adaptDeliveryQuote(quote, quoteId, expiresAt) {
     quoteId,
     expiresAt,
     // quote.available (spread in above) is now a real field from the
-    // backend -- a best-effort snapshot of stock at quote time, not a
-    // reservation. submitOrder still re-checks for real at placement time
-    // (see VehicleUnavailableError handling in handleConfirm), so this can
-    // still go stale between the quote and the submit.
+    // backend -- a best-effort snapshot of stock at quote time, purely
+    // informational (a "Sold out" hint). It's never re-checked or enforced
+    // at submission -- placing an order always succeeds regardless, so this
+    // can go stale between the quote and the submit without consequence.
   };
 }
 
@@ -130,16 +130,12 @@ async function placeOrderReal(fields) {
     body: JSON.stringify(fields),
     ...CREDENTIALS,
   });
-  if (!response.ok) {
-    const errorMessage = await readError(response);
-    // The real backend only discovers "sold out" at submission time (see
-    // adaptDeliveryQuote's available:true note) -- a 409 here is that
-    // discovery. Surfacing it as VehicleUnavailableError (not a plain
-    // Error) is what lets OrderPage's handleConfirm catch it specifically
-    // and reveal the "join the queue" checkbox, same as the mock path.
-    if (response.status === 409) throw new VehicleUnavailableError(errorMessage);
-    throw new Error(errorMessage);
-  }
+  // Submission always succeeds as PENDING_DROPOFF regardless of station stock
+  // -- it's just a commitment, not a vehicle claim. A vehicle is only ever
+  // actually claimed later, at drop-off (confirmAtStation), where the order
+  // queues automatically if none is idle then. There's no "sold out" outcome
+  // to special-case here anymore.
+  if (!response.ok) throw new Error(await readError(response));
   return response.json(); // Order
 }
 
@@ -172,8 +168,8 @@ async function confirmAtStationReal(orderId) {
   });
   if (!response.ok) throw new Error(await readError(response));
   // The endpoint's success body is just the new status string (e.g.
-  // "AT_STATION"), not a full Order — re-fetch so callers always get the
-  // same Order shape getOrder() returns everywhere else.
+  // "BEFORE_HALF_WAY"), not a full Order — re-fetch so callers always get
+  // the same Order shape getOrder() returns everywhere else.
   await response.text();
   return getOrderReal(orderId);
 }
@@ -422,11 +418,6 @@ const DROPOFF_WINDOW_MS = 3 * 60 * 60 * 1000; // 3 hours
 // options instead of showing a generic failure toast.
 export class QuoteExpiredError extends Error {}
 
-// Advanced Features doc, Feature 2 (Order Queue): thrown when a station has
-// none of the requested vehicle type left and the user didn't opt in to
-// being queued — the "base project" immediate-failure behavior.
-export class VehicleUnavailableError extends Error {}
-
 // The one quote batch currently valid for (mock) submission — set by the
 // most recent getDeliveryOptions call, and replaced (not merged) by the
 // next one, per requirement 3: re-requesting options starts a fresh window
@@ -521,29 +512,12 @@ async function placeOrderMock(fields) {
     );
   }
 
-  const station = MOCK_STATIONS.find((s) => s.stationId === fields.stationId);
-  const countKey = fields.vehicle === "ROBOT" ? "robotCount" : "droneCount";
-  // station[countKey] tracks vehicles idle at the station right now — a
-  // vehicle isn't actually claimed until the package physically arrives
-  // (confirmAtStationMock decrements it there, not here). Placing an order
-  // is just a commitment to show up; any number of people can be
-  // PENDING_DROPOFF for the same station at once without conflict, since
-  // none of them have claimed a specific vehicle yet. "Not available" only
-  // means no vehicle is idle at this exact moment — it says nothing about
-  // how many other people are also on their way.
-  const available = station[countKey] > 0;
-
-  // Advanced Features doc, Feature 2 (Order Queue): nothing available is an
-  // immediate failure by default — queueing only happens if the user opted
-  // in via allowQueue at submission time.
-  if (!available && !fields.allowQueue) {
-    throw new VehicleUnavailableError(
-      "No " +
-        (fields.vehicle === "ROBOT" ? "ground robots" : "drones") +
-        " available at this station right now.",
-    );
-  }
-
+  // Submission always succeeds as PENDING_DROPOFF, matching the real
+  // backend — it's just a commitment to show up, never a vehicle claim, so
+  // station stock (MOCK_STATIONS[...].robotCount/droneCount) isn't even
+  // consulted here. A vehicle is only actually claimed later, at drop-off
+  // (confirmAtStationMock), which is where "nothing idle right now" gets
+  // decided and the order queues automatically if so.
   const now = Date.now();
   const order = {
     orderId: mockOrderCounter++,
@@ -551,20 +525,14 @@ async function placeOrderMock(fields) {
     destination: fields.destination,
     packageWeightLbs: fields.packageWeightLbs,
     vehicle: fields.vehicle,
-    // Price/time are locked from the quote either way — a queued order pays
-    // exactly what it was shown at the moment it joined the queue.
     price: lockedOption.price,
     time: lockedOption.time,
     timeIsFallback: lockedOption.timeIsFallback,
     stationId: fields.stationId,
-    status: available ? "PENDING_DROPOFF" : "QUEUED",
+    status: "PENDING_DROPOFF",
     createdAt: new Date().toISOString(),
     statusChangedAt: now,
-    queuedAt: now,
-    // Only starts ticking once a vehicle is actually reserved — a queued
-    // order hasn't been assigned one yet, so it gets a deadline later, when
-    // releaseVehicle promotes it to PENDING_DROPOFF (see below).
-    dropoffDeadline: available ? now + DROPOFF_WINDOW_MS : null,
+    dropoffDeadline: now + DROPOFF_WINDOW_MS,
   };
 
   mockOrders = [order, ...mockOrders];
@@ -607,15 +575,16 @@ function releaseVehicle(stationId, vehicle) {
 }
 
 // How long an order sits at each step before auto-advancing to the next
-// (AT_STATION -> ... -> DELIVERED; PENDING_DROPOFF is exempt, see
-// catchUpStatus). 4 steps separate AT_STATION from DELIVERED, so 50s here
-// gives a live demo ~3:20 of real time before an order finishes delivering
-// itself out from under you — enough to place/confirm several orders and
-// show off "vehicle occupied" states (sold out, queueing, confirmAtStation
-// falling back to QUEUED) without racing the clock. For the "a vehicle just
-// freed up" beat specifically, don't wait on this timer at all — cancelling
-// an AT_STATION-or-later order releases its vehicle the same way DELIVERED
-// does, so that moment can be triggered on cue instead of by chance.
+// (BEFORE_HALF_WAY -> ... -> DELIVERED; PENDING_DROPOFF is exempt, see
+// catchUpStatus). 3 steps separate BEFORE_HALF_WAY from DELIVERED, so 50s
+// here gives a live demo ~2:30 of real time before an order finishes
+// delivering itself out from under you — enough to place/confirm several
+// orders and show off "vehicle occupied" states (sold out, queueing,
+// confirmAtStation falling back to QUEUED) without racing the clock. For the
+// "a vehicle just freed up" beat specifically, don't wait on this timer at
+// all — cancelling a BEFORE_HALF_WAY-or-later order releases its vehicle the
+// same way DELIVERED does, so that moment can be triggered on cue instead of
+// by chance.
 const ADVANCE_INTERVAL_MS = 50 * 1000;
 
 // Advances by wall-clock time elapsed rather than counting timer ticks, so
@@ -690,7 +659,6 @@ function findOwnOrder(orderId) {
 // actually walks over and drops off, which nothing here can predict — so
 // those deeper positions just don't get an estimate.
 const IN_FLIGHT_STATUSES = [
-  "AT_STATION",
   "BEFORE_HALF_WAY",
   "HALF_WAY",
   "MORE_THAN_HALF_WAY",
@@ -767,7 +735,10 @@ async function confirmAtStationMock(orderId) {
     const now = Date.now();
 
     if (available) {
-      order.status = "AT_STATION";
+      // Matches the real backend exactly -- claimVehicleAtDropoff assigns
+      // BEFORE_HALF_WAY directly the moment a vehicle is claimed, no
+      // separate "arrived but not yet moving" status in between.
+      order.status = "BEFORE_HALF_WAY";
       order.statusChangedAt = now;
       station[countKey] -= 1;
     } else {
@@ -788,8 +759,8 @@ async function confirmAtStationMock(orderId) {
 
 // Advanced Features doc, Feature 1 (Cancel Order):
 // - fails if the order doesn't exist, or is already DELIVERED/CANCELLED
-// - refund-eligible only if still PENDING_DROPOFF/AT_STATION/QUEUED at the
-//   moment of cancellation (BEFORE_HALF_WAY onward is not)
+// - refund-eligible only if still PENDING_DROPOFF/QUEUED at the moment of
+//   cancellation (BEFORE_HALF_WAY onward is not)
 // - releases the reserved vehicle back to the station's count (or straight
 //   to the next queued order), regardless of how far the trip had
 //   progressed (no return-trip modeling) — except QUEUED and PENDING_DROPOFF
@@ -802,8 +773,8 @@ async function cancelOrderMock(orderId) {
   if (!order) throw new Error("Order not found.");
   // Bring status up to date with wall-clock time first — otherwise the
   // eligibility check below could read a stale, not-yet-caught-up status
-  // (e.g. still shows AT_STATION when enough time has actually passed that
-  // it should already be BEFORE_HALF_WAY), granting a refund the order
+  // (e.g. still shows BEFORE_HALF_WAY when enough time has actually passed
+  // that it should already be HALF_WAY), granting a refund the order
   // shouldn't be eligible for.
   catchUpStatus(order);
   if (isTerminal(order.status)) {

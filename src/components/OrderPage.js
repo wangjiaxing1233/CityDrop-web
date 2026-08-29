@@ -5,7 +5,6 @@ import {
   Input,
   Radio,
   Button,
-  Checkbox,
   Descriptions,
   InputNumber,
   Row,
@@ -22,7 +21,6 @@ import {
   placeOrder,
   cancelOrder,
   QuoteExpiredError,
-  VehicleUnavailableError,
 } from "../utils";
 import { modeLabel, isCancellable, parseAddress } from "../orderUtils";
 import { colors } from "../theme";
@@ -84,12 +82,6 @@ class OrderPage extends React.Component {
     selectedKey: null,
     quoteExpiresAt: null,
     now: Date.now(),
-    allowQueue: false,
-    // Set when a submission fails because the real backend discovered the
-    // station is sold out (see placeOrderReal's 409 -> VehicleUnavailableError).
-    // The quote step never knows this in advance (available is always true
-    // for a real quote), so this is what reveals the "join queue" checkbox.
-    submitFailedUnavailable: false,
     placedOrder: null,
     placedStationName: null,
     cancellingPlacedOrder: false,
@@ -149,7 +141,7 @@ class OrderPage extends React.Component {
   };
 
   handleConfirm = async () => {
-    const { address, options, selectedKey, allowQueue } = this.state;
+    const { address, options, selectedKey } = this.state;
     const selected = options.find((o) => optionKey(o) === selectedKey);
     if (!selected) {
       message.error("Please select an option");
@@ -166,25 +158,22 @@ class OrderPage extends React.Component {
 
     this.setState({ confirming: true });
     try {
+      // Submission always succeeds as PENDING_DROPOFF, whether or not this
+      // option showed "Sold out" -- a vehicle is only ever actually claimed
+      // later, at drop-off, where it queues automatically if none is idle
+      // then. There's no opt-in here because there's no scarcity outcome to
+      // opt into at this step.
       const order = await placeOrder({
         destination,
         packageWeightLbs: address.weightLb,
         stationId: selected.stationId,
         vehicle: selected.mode,
-        queueIfUnavailable: allowQueue,
       });
       this.setState({ placedOrder: order, placedStationName: selected.stationName });
     } catch (err) {
       if (err instanceof QuoteExpiredError) {
         message.error(err.message);
         this.backToForm();
-      } else if (err instanceof VehicleUnavailableError) {
-        // The real backend only discovers "sold out" here, at submission
-        // time -- flip this on so the render below reveals the "join
-        // queue" checkbox, then the user can check it and press Confirm
-        // again to resubmit with queueIfUnavailable: true.
-        message.error(err.message);
-        this.setState({ submitFailedUnavailable: true });
       } else {
         message.error(err.message);
       }
@@ -282,8 +271,6 @@ class OrderPage extends React.Component {
       address: null,
       step: 0,
       quoteExpiresAt: null,
-      allowQueue: false,
-      submitFailedUnavailable: false,
     });
   };
 
@@ -303,8 +290,6 @@ class OrderPage extends React.Component {
       selectedKey: null,
       quoteExpiresAt: null,
       now: Date.now(),
-      allowQueue: false,
-      submitFailedUnavailable: false,
       placedOrder: null,
       placedStationName: null,
       cancellingPlacedOrder: false,
@@ -321,8 +306,6 @@ class OrderPage extends React.Component {
       selectedKey,
       quoteExpiresAt,
       now,
-      allowQueue,
-      submitFailedUnavailable,
       placedOrder,
       placedStationName,
       cancellingPlacedOrder,
@@ -725,10 +708,7 @@ class OrderPage extends React.Component {
                 style={{ width: "100%" }}
                 value={selectedKey}
                 onChange={(e) =>
-                  this.setState({
-                    selectedKey: e.target.value,
-                    submitFailedUnavailable: false,
-                  })
+                  this.setState({ selectedKey: e.target.value })
                 }
               >
                 <div
@@ -939,7 +919,7 @@ class OrderPage extends React.Component {
                 </Descriptions>
               )}
 
-              {selected && (!selected.available || submitFailedUnavailable) && (
+              {selected && !selected.available && (
                 <div
                   style={{
                     marginBottom: 20,
@@ -948,22 +928,14 @@ class OrderPage extends React.Component {
                     fontSize: 13,
                     background: "#fffbe6",
                     border: "1px solid #ffe58f",
+                    color: "#874d00",
                   }}
                 >
-                  <div style={{ marginBottom: 8, color: "#874d00" }}>
-                    This option is sold out right now — no{" "}
-                    {selected.mode === "DRONE" ? "drones" : "ground robots"} left
-                    at {selected.stationName}.
-                  </div>
-                  <Checkbox
-                    checked={allowQueue}
-                    onChange={(e) =>
-                      this.setState({ allowQueue: e.target.checked })
-                    }
-                  >
-                    Join the queue — assign me the next one that frees up, at
-                    today's price
-                  </Checkbox>
+                  No {selected.mode === "DRONE" ? "drones" : "ground robots"}{" "}
+                  are free at {selected.stationName} right now — you can still
+                  place this order. If none has freed up by the time you drop
+                  off your package, you'll automatically join the queue for
+                  the next one, first come first served.
                 </div>
               )}
 
@@ -971,11 +943,7 @@ class OrderPage extends React.Component {
                 type="primary"
                 onClick={this.handleConfirm}
                 loading={confirming}
-                disabled={
-                  !selected ||
-                  quoteExpired ||
-                  ((!selected.available || submitFailedUnavailable) && !allowQueue)
-                }
+                disabled={!selected || quoteExpired}
                 style={{
                   marginRight: 16,
                   height: 44,

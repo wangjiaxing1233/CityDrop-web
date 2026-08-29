@@ -6,10 +6,13 @@ export function modeLabel(mode) {
   return mode === "DRONE" ? "Drone Delivery" : "Ground Robot";
 }
 
-// The order the six-stage progress (Steps component) moves through.
+// The order the five-stage progress (Steps component) moves through. There
+// is no separate "arrived but not yet moving" stage on the backend anymore
+// -- claimVehicleAtDropoff assigns BEFORE_HALF_WAY directly the moment a
+// vehicle is claimed at drop-off (see OrderQueueService), so PENDING_DROPOFF
+// goes straight to BEFORE_HALF_WAY with nothing in between.
 export const STATUS_SEQUENCE = [
   "PENDING_DROPOFF",
-  "AT_STATION",
   "BEFORE_HALF_WAY",
   "HALF_WAY",
   "MORE_THAN_HALF_WAY",
@@ -18,7 +21,6 @@ export const STATUS_SEQUENCE = [
 
 const STATUS_LABELS = {
   PENDING_DROPOFF: "Pending drop-off",
-  AT_STATION: "At station",
   BEFORE_HALF_WAY: "On the way",
   HALF_WAY: "Halfway there",
   MORE_THAN_HALF_WAY: "Almost there",
@@ -37,15 +39,13 @@ export function isCancellable(status) {
   return status !== "DELIVERED" && status !== "CANCELLED";
 }
 
-// Per the Advanced Features doc: still PENDING_DROPOFF/AT_STATION at the
-// moment of cancellation -> refund-eligible; BEFORE_HALF_WAY onward -> not.
-// A QUEUED order never had a vehicle dispatched at all, so it's eligible too.
+// Matches the backend exactly (see OrderRepository.markDroppedOff /
+// assignQueuedOrderAtStation, both of which flip refund_eligible to false in
+// the same statement that sets BEFORE_HALF_WAY): still PENDING_DROPOFF or
+// QUEUED at the moment of cancellation -> refund-eligible (no vehicle was
+// ever claimed yet); BEFORE_HALF_WAY onward -> not.
 export function isRefundEligible(status) {
-  return (
-    status === "PENDING_DROPOFF" ||
-    status === "AT_STATION" ||
-    status === "QUEUED"
-  );
+  return status === "PENDING_DROPOFF" || status === "QUEUED";
 }
 
 export function statusLabel(status) {
