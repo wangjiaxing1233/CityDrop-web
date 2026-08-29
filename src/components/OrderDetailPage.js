@@ -461,7 +461,14 @@ class OrderDetailPage extends React.Component {
                   {order.price != null ? "$" + order.price : "—"}
                 </Text>
               </Descriptions.Item>
-              {order.status === "CANCELLED" && (
+              {order.status === "CANCELLED" && order.refundEligible != null && (
+                // The real backend's plain GET /order/{id} doesn't carry
+                // refundEligible -- only the cancel response itself does
+                // (see cancelOrderReal in utils.js). So this only renders
+                // right after cancelling in this session; reloading the page
+                // for an already-cancelled order just omits the row instead
+                // of guessing (undefined would otherwise read as "false" and
+                // assert "Not eligible", which may not be true).
                 <Descriptions.Item label="Refund">
                   <Tag color={order.refundEligible ? "success" : "default"}>
                     {order.refundEligible ? "Eligible" : "Not eligible"}
