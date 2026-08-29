@@ -27,10 +27,13 @@ import "leaflet/dist/leaflet.css";
 // This only replaces the *background* with a real map; it doesn't change
 // what "progress" means.
 
+// Copied verbatim from the backend's data.sql seed (coord_x = lat,
+// coord_y = lng, per StationEntity/DeliveryService) -- these need to stay in
+// sync by hand since there's no endpoint exposing them (see note above).
 const STATION_COORDS = {
-  1: { lat: 37.7749, lng: -122.4994 },
-  2: { lat: 37.7244, lng: -122.3712 },
-  3: { lat: 37.8044, lng: -122.3833 },
+  1: { lat: 37.777338, lng: -122.464903 },
+  2: { lat: 37.774907, lng: -122.412962 },
+  3: { lat: 37.731199, lng: -122.429724 },
 };
 
 const NOMINATIM_URL = "https://nominatim.openstreetmap.org/search";
@@ -94,6 +97,25 @@ function emojiIcon(emoji, size) {
     html: `<div style="font-size:${size}px; line-height:1;">${emoji}</div>`,
     className: "",
     iconSize: [size, size],
+    iconAnchor: [size / 2, size / 2],
+  });
+}
+
+// All 3 stations get shown on every order's map for context, not just the
+// one dispatching this particular package -- the one actually in use here
+// is drawn at full size/opacity with the route running through it; the
+// other two are smaller/dimmer so the eye still lands on what matters.
+function stationIcon(label, active) {
+  const size = active ? 26 : 18;
+  return L.divIcon({
+    html: `
+      <div style="display:flex; flex-direction:column; align-items:center; opacity:${active ? 1 : 0.6};">
+        <div style="font-size:${size}px; line-height:1;">🏢</div>
+        <div style="font-size:10px; font-weight:700; color:#1E2761; background:#ffffffdd; padding:1px 5px; border-radius:4px; margin-top:2px; white-space:nowrap;">${label}</div>
+      </div>
+    `,
+    className: "",
+    iconSize: [size, size + 16],
     iconAnchor: [size / 2, size / 2],
   });
 }
@@ -166,7 +188,13 @@ export function TrackingMap({ progress, vehicle, destination, stationId }) {
 
   const { routePoints, destCoords } = state;
   const vehiclePos = pointAtProgress(routePoints, progress);
-  const bounds = L.latLngBounds(routePoints.map((p) => [p.lat, p.lng]));
+  // Bounds include every station, not just this route's two endpoints, so
+  // all 3 stay visible on screen -- gives a sense of the whole network,
+  // not just this one delivery in isolation.
+  const bounds = L.latLngBounds([
+    ...routePoints.map((p) => [p.lat, p.lng]),
+    ...Object.values(STATION_COORDS).map((p) => [p.lat, p.lng]),
+  ]);
 
   return (
     <div style={{ height: 220, borderRadius: 12, overflow: "hidden" }}>
@@ -184,7 +212,13 @@ export function TrackingMap({ progress, vehicle, destination, stationId }) {
           positions={routePoints.map((p) => [p.lat, p.lng])}
           pathOptions={{ color: "#1E2761", weight: 4, opacity: 0.85 }}
         />
-        <Marker position={[stationCoords.lat, stationCoords.lng]} icon={emojiIcon("🏢", 26)} />
+        {Object.entries(STATION_COORDS).map(([id, coords]) => (
+          <Marker
+            key={id}
+            position={[coords.lat, coords.lng]}
+            icon={stationIcon("Station " + id, Number(id) === stationId)}
+          />
+        ))}
         <Marker position={[destCoords.lat, destCoords.lng]} icon={emojiIcon("📍", 26)} />
         <Marker
           position={[vehiclePos.lat, vehiclePos.lng]}
