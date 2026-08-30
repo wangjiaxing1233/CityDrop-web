@@ -92,7 +92,7 @@ class OrderDetailPage extends React.Component {
     if (order.status === "CANCELLED") {
       return (
         <Card
-          bordered={false}
+          variant="borderless"
           style={{
             borderRadius: 16,
             boxShadow: "0 4px 12px rgba(0,0,0,0.02)",
@@ -119,7 +119,7 @@ class OrderDetailPage extends React.Component {
     if (order.status === "PENDING_DROPOFF") {
       return (
         <Card
-          bordered={false}
+          variant="borderless"
           style={{
             borderRadius: 16,
             boxShadow: "0 4px 12px rgba(0,0,0,0.02)",
@@ -174,7 +174,7 @@ class OrderDetailPage extends React.Component {
     if (order.status === "QUEUED") {
       return (
         <Card
-          bordered={false}
+          variant="borderless"
           style={{
             borderRadius: 16,
             boxShadow: "0 4px 12px rgba(0,0,0,0.02)",
@@ -216,7 +216,7 @@ class OrderDetailPage extends React.Component {
 
     return (
       <Card
-        bordered={false}
+        variant="borderless"
         style={{
           borderRadius: 16,
           boxShadow: "0 4px 12px rgba(0,0,0,0.02)",
@@ -405,28 +405,30 @@ class OrderDetailPage extends React.Component {
 
         <Space direction="vertical" size={24} style={{ width: "100%" }}>
           <Card
-            bordered={false}
+            variant="borderless"
             style={{
               borderRadius: 16,
               boxShadow: "0 4px 12px rgba(0,0,0,0.02)",
               border: "1px solid #f0f0f0",
             }}
-            bodyStyle={{ padding: "8px 0" }}
+            styles={{ body: { padding: "8px 0" } }}
           >
             <Descriptions
               bordered
               column={1}
-              labelStyle={{
-                width: "200px",
-                backgroundColor: "#fafafa",
-                fontWeight: 600,
-                color: "#434343",
-                padding: "16px 24px",
-              }}
-              contentStyle={{
-                backgroundColor: "#ffffff",
-                color: "#1f1f1f",
-                padding: "16px 24px",
+              styles={{
+                label: {
+                  width: "200px",
+                  backgroundColor: "#fafafa",
+                  fontWeight: 600,
+                  color: "#434343",
+                  padding: "16px 24px",
+                },
+                content: {
+                  backgroundColor: "#ffffff",
+                  color: "#1f1f1f",
+                  padding: "16px 24px",
+                },
               }}
               style={{ overflow: "hidden", borderRadius: 16 }}
             >

@@ -1,6 +1,14 @@
 node_modules
 build
+coverage
 .DS_Store
 .env.local
 npm-debug.log*
 .claude
+
+# Playwright
+/test-results/
+/playwright-report/
+/blob-report/
+/playwright/.cache/
+/playwright/.auth/
