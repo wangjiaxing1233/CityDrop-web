@@ -109,7 +109,7 @@ class MyOrdersPage extends React.Component {
             key={o.orderId}
             hoverable
             onClick={() => navigate("/orders/" + o.orderId)}
-            bodyStyle={{ padding: "24px" }}
+            styles={{ body: { padding: "24px" } }}
             cover={
               <div style={{ position: "relative", height: 130, overflow: "hidden" }}>
                 {o.vehicle === "DRONE" ? (
