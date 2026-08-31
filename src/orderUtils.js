@@ -72,3 +72,35 @@ export function parseAddress(text) {
     zip: match[4],
   };
 }
+
+// Tolerant companion to parseAddress for the chat "Create order" shortcut,
+// whose destination usually arrives without a zip (the backend normalizes a
+// bare street to "<street>, San Francisco, CA"). parseAddress is all-or-
+// nothing and would reject that, leaving the form on its placeholder and
+// silently dropping the address the user actually asked for. This fills
+// whatever comma-separated parts are present and lets the caller default the
+// rest; returns null only when there's nothing usable.
+export function parseAddressLoose(text) {
+  if (!text) return null;
+  const strict = parseAddress(text);
+  if (strict) return strict;
+
+  const parts = text
+    .trim()
+    .split(",")
+    .map((p) => p.trim())
+    .filter(Boolean);
+  if (parts.length === 0) return null;
+
+  const result = { street: parts[0] };
+  if (parts[1]) result.city = parts[1];
+  // Third part is typically "CA" or "CA 94103"; a lone zip can also land as
+  // its own trailing part ("...,  CA,  94103").
+  const stateZip = (parts[2] || "").match(/^([A-Za-z]{2})(?:\s+(\d{5}))?$/);
+  if (stateZip) {
+    result.state = stateZip[1].toUpperCase();
+    if (stateZip[2]) result.zip = stateZip[2];
+  }
+  if (!result.zip && /^\d{5}$/.test(parts[3] || "")) result.zip = parts[3];
+  return result;
+}

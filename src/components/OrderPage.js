@@ -22,7 +22,12 @@ import {
   cancelOrder,
   QuoteExpiredError,
 } from "../utils";
-import { modeLabel, isCancellable, parseAddress } from "../orderUtils";
+import {
+  modeLabel,
+  isCancellable,
+  parseAddress,
+  parseAddressLoose,
+} from "../orderUtils";
 import { colors } from "../theme";
 import { RobotFace } from "./VehicleArt";
 
@@ -215,12 +220,19 @@ class OrderPage extends React.Component {
   // nothing to prefill (a fresh visit, direct link, etc.).
   getInitialFormValues = () => {
     const { prefill } = this.props;
-    const parsed = prefill?.destination ? parseAddress(prefill.destination) : null;
+    const hasPrefill = Boolean(prefill?.destination);
+    // parseAddressLoose so a chat prefill without a zip
+    // ("1600 Market St, San Francisco, CA") still fills street/city/state
+    // rather than dropping the user's address and showing the placeholder.
+    // When there IS a prefill but a field can't be recovered (typically the
+    // zip), leave it blank so the required-field rule prompts for it --
+    // better than pre-filling a guessed value the user might not notice.
+    const parsed = hasPrefill ? parseAddressLoose(prefill.destination) : null;
     return {
-      street: parsed?.street ?? "88 Mission St",
+      street: parsed?.street ?? (hasPrefill ? "" : "88 Mission St"),
       city: parsed?.city ?? "San Francisco",
       state: parsed?.state ?? "CA",
-      zip: parsed?.zip ?? "94105",
+      zip: parsed?.zip ?? (hasPrefill ? "" : "94105"),
       weight: prefill?.weightLb ?? 3,
     };
   };

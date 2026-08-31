@@ -5,6 +5,7 @@ import {
   isRefundEligible,
   statusLabel,
   parseAddress,
+  parseAddressLoose,
 } from "./orderUtils";
 
 describe("modeLabel", () => {
@@ -147,5 +148,51 @@ describe("parseAddress", () => {
     ).toBeNull();
     // ZIP too short
     expect(parseAddress("1000 Main St, San Francisco, CA 941")).toBeNull();
+  });
+});
+
+describe("parseAddressLoose", () => {
+  it("defers to parseAddress for a well-formed address", () => {
+    expect(
+      parseAddressLoose("1000 The Embarcadero, San Francisco, CA 94133"),
+    ).toEqual({
+      street: "1000 The Embarcadero",
+      city: "San Francisco",
+      state: "CA",
+      zip: "94133",
+    });
+  });
+
+  it("recovers street/city/state from a chat prefill with no zip", () => {
+    // This is exactly what the backend sends for a bare street the user
+    // mentioned in chat: normalized to "<street>, San Francisco, CA".
+    expect(parseAddressLoose("1600 Market St, San Francisco, CA")).toEqual({
+      street: "1600 Market St",
+      city: "San Francisco",
+      state: "CA",
+    });
+  });
+
+  it("picks up a zip that trails as its own comma-separated part", () => {
+    expect(
+      parseAddressLoose("1600 Market St, San Francisco, CA, 94102"),
+    ).toEqual({
+      street: "1600 Market St",
+      city: "San Francisco",
+      state: "CA",
+      zip: "94102",
+    });
+  });
+
+  it("fills what it can when only a street is given", () => {
+    expect(parseAddressLoose("1600 Market St")).toEqual({
+      street: "1600 Market St",
+    });
+  });
+
+  it("returns null for empty or missing input", () => {
+    expect(parseAddressLoose("")).toBeNull();
+    expect(parseAddressLoose(null)).toBeNull();
+    expect(parseAddressLoose(undefined)).toBeNull();
   });
 });
